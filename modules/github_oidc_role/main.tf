@@ -108,7 +108,10 @@ data "aws_iam_policy_document" "permissions" {
         "iam:DeleteRolePolicy",
         "iam:PassRole",
         "iam:ListRolePolicies",
-        "iam:GetRolePolicy"
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion"
       ]
       resources = ["*"]
     }
