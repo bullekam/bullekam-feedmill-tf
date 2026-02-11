@@ -29,10 +29,10 @@ variable "memory" {
 }
 
 # You’ll push an image to ECR; set this tag to whatever you push (e.g. "v1")
-variable "image_tag" {
-  type    = string
-  default = "v1"
-}
+# variable "image_tag" {
+#   type    = string
+#   default = "v1"
+# }
 
 variable "environment" {
   type    = string
@@ -42,4 +42,10 @@ variable "environment" {
 variable "domain_name" {
   type    = string
   default = "bullekam.com"
+}
+
+variable "deploy_id" {
+  type        = string
+  description = "Changes each deploy to force a new task definition revision (e.g., git sha)."
+  default     = ""
 }

@@ -55,7 +55,7 @@ resource "aws_route_table_association" "public" {
 # -------------------
 resource "aws_ecr_repository" "app" {
   name                 = "${var.name}-${var.environment}"
-  image_tag_mutability = "MUTABLE"
+  image_tag_mutability = "IMMUTABLE"
 }
 
 # -------------------
@@ -186,7 +186,7 @@ resource "aws_ecs_task_definition" "app" {
   container_definitions = jsonencode([
     {
       name      = var.name
-      image     = "${aws_ecr_repository.app.repository_url}:${var.image_tag}"
+      image     = "${aws_ecr_repository.app.repository_url}:latest"
       essential = true
 
       portMappings = [
@@ -194,7 +194,7 @@ resource "aws_ecs_task_definition" "app" {
       ]
 
       environment = [
-        { name = "NODE_ENV", value = "production" }
+        { name = "DEPLOY_ID", value = var.deploy_id }
       ]
 
       logConfiguration = {

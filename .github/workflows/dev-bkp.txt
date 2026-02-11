@@ -1,15 +1,10 @@
 name: Terraform - Dev
 
 on:
-  # Normal infra changes
   pull_request:
     branches: ["dev"]
   push:
     branches: ["dev"]
-
-  # Triggered by app repo after pushing :latest
-  repository_dispatch:
-    types: [deploy-image]
 
 permissions:
   id-token: write
@@ -22,10 +17,6 @@ env:
 jobs:
   plan:
     runs-on: ubuntu-latest
-
-    env:
-      # deploy_id is optional; present only for repository_dispatch runs
-      DEPLOY_ID: ${{ github.event.client_payload.deploy_id }}
 
     steps:
       - uses: actions/checkout@v4
@@ -54,24 +45,16 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
-        run: |
-          terraform plan \
-            -var-file="envs/dev.tfvars" \
-            $( [ -n "$DEPLOY_ID" ] && echo "-var=deploy_id=$DEPLOY_ID" )
+        run: terraform plan -var-file="envs/dev.tfvars"
 
   apply:
     needs: plan
     runs-on: ubuntu-latest
 
-    # Auto-apply on:
-    # - push to dev (infra changes)
-    # - repository_dispatch deploy-image (app deploys)
-    if: github.event_name == 'push' || github.event_name == 'repository_dispatch'
+    # Auto-apply only on push events (not PRs)
+    if: github.event_name == 'push'
 
     environment: dev
-
-    env:
-      DEPLOY_ID: ${{ github.event.client_payload.deploy_id }}
 
     steps:
       - uses: actions/checkout@v4
@@ -94,7 +77,4 @@ jobs:
           terraform workspace select dev || terraform workspace new dev
 
       - name: Terraform Apply (dev auto)
-        run: |
-          terraform apply -auto-approve \
-            -var-file="envs/dev.tfvars" \
-            $( [ -n "$DEPLOY_ID" ] && echo "-var=deploy_id=$DEPLOY_ID" )
+        run: terraform apply -auto-approve -var-file="envs/dev.tfvars"
