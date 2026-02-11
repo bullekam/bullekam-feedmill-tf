@@ -1,0 +1,81 @@
+name: Terraform - Prod
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  TF_ENV: prod
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Select Workspace
+        run: |
+          terraform workspace select $TF_ENV || terraform workspace new $TF_ENV
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -var-file="envs/prod.tfvars"
+
+  apply:
+    needs: plan
+    runs-on: ubuntu-latest
+
+    # Apply only on push to main (never on PRs)
+    if: github.event_name == 'push'
+
+    # Manual approval gate (Settings → Environments → prod → required reviewers)
+    environment: prod
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Select Workspace
+        run: |
+          terraform workspace select prod || terraform workspace new prod
+
+      - name: Terraform Apply (prod requires approval)
+        run: terraform apply -auto-approve -var-file="envs/prod.tfvars"

@@ -82,7 +82,8 @@ data "aws_iam_policy_document" "permissions" {
       "ecr:GetDownloadUrlForLayer",
       "ecr:DescribeRepositories",
       "ecr:ListTagsForResource",
-      "ecr:TagResource"
+      "ecr:TagResource",
+      "ecr:CreateRepository"
     ]
     resources = ["*"]
   }
