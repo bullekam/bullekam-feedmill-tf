@@ -80,7 +80,9 @@ data "aws_iam_policy_document" "permissions" {
       "ecr:UploadLayerPart",
       "ecr:BatchGetImage",
       "ecr:GetDownloadUrlForLayer",
-      "ecr:DescribeRepositories"
+      "ecr:DescribeRepositories",
+      "ecr:ListTagsForResource",
+      "ecr:TagResource"
     ]
     resources = ["*"]
   }
@@ -104,7 +106,9 @@ data "aws_iam_policy_document" "permissions" {
         "iam:DetachRolePolicy",
         "iam:PutRolePolicy",
         "iam:DeleteRolePolicy",
-        "iam:PassRole"
+        "iam:PassRole",
+        "iam:ListRolePolicies",
+        "iam:GetRolePolicy"
       ]
       resources = ["*"]
     }
