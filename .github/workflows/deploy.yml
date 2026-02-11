@@ -1,6 +1,11 @@
-name: Terraform Deploy
+name: Terraform (Plan + Apply)
 
 on:
+  # 1) Infra code changes
+  push:
+    branches: ["dev"]
+
+  # 2) Deploys triggered from app repo after image push
   repository_dispatch:
     types: [deploy-image]
 
@@ -8,13 +13,15 @@ permissions:
   id-token: write
   contents: read
 
-jobs:
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
 
+jobs:
   plan:
     runs-on: ubuntu-latest
 
+    # If triggered by dispatch, use the image tag from payload, else keep existing/default
     env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
       ENV: dev
       IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
 
@@ -28,11 +35,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
 
       - name: Terraform Init
         run: terraform init
 
-      - name: Workspace Select
+      - name: Select Workspace
         run: |
           terraform workspace select $ENV || terraform workspace new $ENV
 
@@ -40,18 +49,19 @@ jobs:
         run: |
           terraform plan \
             -var-file="envs/$ENV.tfvars" \
-            -var="image_tag=$IMAGE_TAG"
-
+            $( [ -n "$IMAGE_TAG" ] && echo "-var=image_tag=$IMAGE_TAG" )
 
   apply:
     needs: plan
     runs-on: ubuntu-latest
 
-    # THIS is the manual approval gate
+    # Only gate/apply on image deploys (dispatch). For dev branch pushes, you might want plan-only.
+    if: github.event_name == 'repository_dispatch'
+
+    # manual approval gate (Settings → Environments → dev → required reviewers)
     environment: dev
 
     env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
       ENV: dev
       IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
 
@@ -65,11 +75,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
 
       - name: Terraform Init
         run: terraform init
 
-      - name: Workspace Select
+      - name: Select Workspace
         run: |
           terraform workspace select $ENV || terraform workspace new $ENV
 
