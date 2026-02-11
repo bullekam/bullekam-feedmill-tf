@@ -1,11 +1,11 @@
 name: Terraform (Plan + Apply)
 
 on:
-  # 1) Infra code changes
+  # Infra code changes (plan only)
   push:
     branches: ["dev"]
 
-  # 2) Deploys triggered from app repo after image push
+  # Deploys triggered from app repo after image push
   repository_dispatch:
     types: [deploy-image]
 
@@ -20,9 +20,9 @@ jobs:
   plan:
     runs-on: ubuntu-latest
 
-    # If triggered by dispatch, use the image tag from payload, else keep existing/default
     env:
-      ENV: dev
+      # If dispatch, use payload env; if push to dev branch, default to dev
+      TF_ENV: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || 'dev' }}
       IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
 
     steps:
@@ -43,26 +43,25 @@ jobs:
 
       - name: Select Workspace
         run: |
-          terraform workspace select $ENV || terraform workspace new $ENV
+          terraform workspace select $TF_ENV || terraform workspace new $TF_ENV
 
       - name: Terraform Plan
         run: |
           terraform plan \
-            -var-file="envs/$ENV.tfvars" \
+            -var-file="envs/$TF_ENV.tfvars" \
             $( [ -n "$IMAGE_TAG" ] && echo "-var=image_tag=$IMAGE_TAG" )
 
-  apply:
+  apply_dev:
     needs: plan
     runs-on: ubuntu-latest
 
-    # Only gate/apply on image deploys (dispatch). For dev branch pushes, you might want plan-only.
-    if: github.event_name == 'repository_dispatch'
+    # Only apply on dispatch AND when env is dev
+    if: github.event_name == 'repository_dispatch' && github.event.client_payload.environment == 'dev'
 
-    # manual approval gate (Settings → Environments → dev → required reviewers)
     environment: dev
 
     env:
-      ENV: dev
+      TF_ENV: dev
       IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
 
     steps:
@@ -83,10 +82,50 @@ jobs:
 
       - name: Select Workspace
         run: |
-          terraform workspace select $ENV || terraform workspace new $ENV
+          terraform workspace select $TF_ENV || terraform workspace new $TF_ENV
 
-      - name: Terraform Apply
+      - name: Terraform Apply (dev auto)
         run: |
           terraform apply -auto-approve \
-            -var-file="envs/$ENV.tfvars" \
+            -var-file="envs/$TF_ENV.tfvars" \
+            -var="image_tag=$IMAGE_TAG"
+
+  apply_prod:
+    needs: plan
+    runs-on: ubuntu-latest
+
+    # Only apply on dispatch AND when env is prod
+    if: github.event_name == 'repository_dispatch' && github.event.client_payload.environment == 'prod'
+
+    # This is the manual approval gate (Required reviewers on prod env)
+    environment: prod
+
+    env:
+      TF_ENV: prod
+      IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Select Workspace
+        run: |
+          terraform workspace select $TF_ENV || terraform workspace new $TF_ENV
+
+      - name: Terraform Apply (prod requires approval)
+        run: |
+          terraform apply -auto-approve \
+            -var-file="envs/$TF_ENV.tfvars" \
             -var="image_tag=$IMAGE_TAG"
