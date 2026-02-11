@@ -55,7 +55,7 @@ resource "aws_route_table_association" "public" {
 # -------------------
 resource "aws_ecr_repository" "app" {
   name                 = "${var.name}-${var.environment}"
-  image_tag_mutability = "IMMUTABLE"
+  image_tag_mutability = "MUTABLE"
 }
 
 # -------------------
