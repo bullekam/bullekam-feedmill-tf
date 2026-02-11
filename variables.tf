@@ -34,7 +34,6 @@ variable "image_tag" {
   default = "v1"
 }
 
-
 variable "environment" {
   type    = string
   default = "dev"
