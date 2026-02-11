@@ -1,0 +1,80 @@
+name: Terraform Deploy
+
+on:
+  repository_dispatch:
+    types: [deploy-image]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+
+  plan:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ENV: dev
+      IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Workspace Select
+        run: |
+          terraform workspace select $ENV || terraform workspace new $ENV
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var-file="envs/$ENV.tfvars" \
+            -var="image_tag=$IMAGE_TAG"
+
+
+  apply:
+    needs: plan
+    runs-on: ubuntu-latest
+
+    # THIS is the manual approval gate
+    environment: dev
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ENV: dev
+      IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Workspace Select
+        run: |
+          terraform workspace select $ENV || terraform workspace new $ENV
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve \
+            -var-file="envs/$ENV.tfvars" \
+            -var="image_tag=$IMAGE_TAG"

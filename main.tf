@@ -1,13 +1,3 @@
-terraform {
-  #required_version = ">= 1.5.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.0"
-    }
-  }
-}
-
 
 locals {
   azs = slice(data.aws_availability_zones.azs.names, 0, 2)
@@ -21,12 +11,12 @@ resource "aws_vpc" "this" {
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  tags = { Name = "${var.name}-vpc" }
+  tags = { Name = "${var.name}-${var.environment}-vpc" }
 }
 
 resource "aws_internet_gateway" "this" {
   vpc_id = aws_vpc.this.id
-  tags   = { Name = "${var.name}-igw" }
+  tags   = { Name = "${var.name}-${var.environment}-igw" }
 }
 
 resource "aws_subnet" "public" {
@@ -40,12 +30,12 @@ resource "aws_subnet" "public" {
   availability_zone       = each.value.az
   map_public_ip_on_launch = true
 
-  tags = { Name = "${var.name}-public-${each.key}" }
+  tags = { Name = "${var.name}-${var.environment}-public-${each.key}" }
 }
 
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.this.id
-  tags   = { Name = "${var.name}-public-rt" }
+  tags   = { Name = "${var.name}-${var.environment}-public-rt" }
 }
 
 resource "aws_route" "public_default" {
@@ -64,7 +54,7 @@ resource "aws_route_table_association" "public" {
 # ECR
 # -------------------
 resource "aws_ecr_repository" "app" {
-  name                 = var.name
+  name                 = "${var.name}-${var.environment}"
   image_tag_mutability = "MUTABLE"
 }
 
@@ -72,7 +62,7 @@ resource "aws_ecr_repository" "app" {
 # CloudWatch Logs
 # -------------------
 resource "aws_cloudwatch_log_group" "app" {
-  name              = "/ecs/${var.name}"
+  name              = "/ecs/${var.name}-${var.environment}"
   retention_in_days = 14
 }
 
@@ -80,7 +70,7 @@ resource "aws_cloudwatch_log_group" "app" {
 # IAM roles for ECS Task
 # -------------------
 resource "aws_iam_role" "task_execution" {
-  name               = "${var.name}-task-exec"
+  name               = "${var.name}-${var.environment}-task-exec"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
 }
 
@@ -91,7 +81,7 @@ resource "aws_iam_role_policy_attachment" "task_exec_attach" {
 
 # (Optional) Task role for app permissions later (S3, SSM, etc.)
 resource "aws_iam_role" "task_role" {
-  name               = "${var.name}-task"
+  name               = "${var.name}-${var.environment}-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_task_assume_role.json
 }
 
@@ -99,7 +89,7 @@ resource "aws_iam_role" "task_role" {
 # Security Groups
 # -------------------
 resource "aws_security_group" "alb" {
-  name        = "${var.name}-alb-sg"
+  name        = "${var.name}-${var.environment}-alb-sg"
   description = "ALB SG"
   vpc_id      = aws_vpc.this.id
 
@@ -119,7 +109,7 @@ resource "aws_security_group" "alb" {
 }
 
 resource "aws_security_group" "ecs" {
-  name        = "${var.name}-ecs-sg"
+  name        = "${var.name}-${var.environment}-ecs-sg"
   description = "ECS tasks SG"
   vpc_id      = aws_vpc.this.id
 
@@ -142,14 +132,14 @@ resource "aws_security_group" "ecs" {
 # ALB
 # -------------------
 resource "aws_lb" "app" {
-  name               = substr("${var.name}-alb", 0, 32)
+  name               = substr("${var.name}-${var.environment}-alb", 0, 32)
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
   subnets            = [for s in aws_subnet.public : s.id]
 }
 
 resource "aws_lb_target_group" "app" {
-  name        = substr("${var.name}-tg", 0, 32)
+  name        = substr("${var.name}-${var.environment}-tg", 0, 32)
   port        = var.container_port
   protocol    = "HTTP"
   vpc_id      = aws_vpc.this.id
@@ -181,11 +171,11 @@ resource "aws_lb_listener" "http" {
 # ECS Cluster + Service (Fargate)
 # -------------------
 resource "aws_ecs_cluster" "this" {
-  name = "${var.name}-cluster"
+  name = "${var.name}-${var.environment}-cluster"
 }
 
 resource "aws_ecs_task_definition" "app" {
-  family                   = var.name
+  family                   = "${var.name}-${var.environment}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
   cpu                      = tostring(var.cpu)
@@ -220,7 +210,7 @@ resource "aws_ecs_task_definition" "app" {
 }
 
 resource "aws_ecs_service" "app" {
-  name            = "${var.name}-svc"
+  name            = "${var.name}-${var.environment}-svc"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count

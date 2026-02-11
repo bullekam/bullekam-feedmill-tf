@@ -33,3 +33,14 @@ variable "image_tag" {
   type    = string
   default = "v1"
 }
+
+
+variable "environment" {
+  type    = string
+  default = "dev"
+}
+
+variable "domain_name" {
+  type    = string
+  default = "bullekam.com"
+}
