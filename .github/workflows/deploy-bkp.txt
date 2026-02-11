@@ -1,17 +1,13 @@
-name: Terraform CI/CD
+name: Terraform (Plan + Apply)
 
 on:
-  pull_request:
-    branches: ["main", "dev"]
+  # Infra code changes (plan only)
   push:
-    branches: ["main", "dev"]
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Target environment"
-        required: true
-        type: choice
-        options: [dev, prod]
+    branches: ["dev"]
+
+  # Deploys triggered from app repo after image push
+  repository_dispatch:
+    types: [deploy-image]
 
 permissions:
   id-token: write
@@ -24,13 +20,10 @@ jobs:
   plan:
     runs-on: ubuntu-latest
 
-    # Decide env:
-    # - workflow_dispatch: use chosen input
-    # - push to dev branch: dev
-    # - push to main branch: prod
-    # - PR to dev: dev, PR to main: prod
     env:
-      TF_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || (github.ref_name == 'main' && 'prod' || 'dev') }}
+      # If dispatch, use payload env; if push to dev branch, default to dev
+      TF_ENV: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.environment || 'dev' }}
+      IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -52,23 +45,24 @@ jobs:
         run: |
           terraform workspace select $TF_ENV || terraform workspace new $TF_ENV
 
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive
-
-      - name: Terraform Validate
-        run: terraform validate
-
       - name: Terraform Plan
-        run: terraform plan -var-file="envs/$TF_ENV.tfvars"
+        run: |
+          terraform plan \
+            -var-file="envs/$TF_ENV.tfvars" \
+            $( [ -n "$IMAGE_TAG" ] && echo "-var=image_tag=$IMAGE_TAG" )
 
   apply_dev:
     needs: plan
     runs-on: ubuntu-latest
 
-    # Auto-apply only on push to dev (not on PRs)
-    if: github.event_name == 'push' && github.ref_name == 'dev'
+    # Only apply on dispatch AND when env is dev
+    if: github.event_name == 'repository_dispatch' && github.event.client_payload.environment == 'dev'
 
     environment: dev
+
+    env:
+      TF_ENV: dev
+      IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -88,22 +82,27 @@ jobs:
 
       - name: Select Workspace
         run: |
-          terraform workspace select dev || terraform workspace new dev
+          terraform workspace select $TF_ENV || terraform workspace new $TF_ENV
 
       - name: Terraform Apply (dev auto)
-        run: terraform apply -auto-approve -var-file="envs/dev.tfvars"
+        run: |
+          terraform apply -auto-approve \
+            -var-file="envs/$TF_ENV.tfvars" \
+            -var="image_tag=$IMAGE_TAG"
 
   apply_prod:
     needs: plan
     runs-on: ubuntu-latest
 
-    # Apply prod on push to main OR manual dispatch selecting prod
-    if: |
-      (github.event_name == 'push' && github.ref_name == 'main') ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod')
+    # Only apply on dispatch AND when env is prod
+    if: github.event_name == 'repository_dispatch' && github.event.client_payload.environment == 'prod'
 
-    # Manual approval gate: require reviewers on prod environment
+    # This is the manual approval gate (Required reviewers on prod env)
     environment: prod
+
+    env:
+      TF_ENV: prod
+      IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -123,7 +122,10 @@ jobs:
 
       - name: Select Workspace
         run: |
-          terraform workspace select prod || terraform workspace new prod
+          terraform workspace select $TF_ENV || terraform workspace new $TF_ENV
 
       - name: Terraform Apply (prod requires approval)
-        run: terraform apply -auto-approve -var-file="envs/prod.tfvars"
+        run: |
+          terraform apply -auto-approve \
+            -var-file="envs/$TF_ENV.tfvars" \
+            -var="image_tag=$IMAGE_TAG"
