@@ -1,0 +1,6 @@
+region              = "us-east-1"
+github_org          = "bullekam"
+tf_repo             = "bullekam-feedmill-tf"
+app_repo            = "bullekam-feedmill-code"
+tf_state_bucket_arn = "arn:aws:s3:::bullekam-poc"
+tf_lock_table_arn   = "arn:aws:dynamodb:us-east-1:514009209955:table/bullekam-db-poc"
